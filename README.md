@@ -1,6 +1,6 @@
-# Lucee Installer #
+# Lucee Installer for OSX #
 
-BitRock Installer XML config and files for creating the Lucee installers for Windows and Linux.
+BitRock Installer XML config and files for creating the Lucee installers for OSX Only.
 
 Bitrock has provided LAS with an Enterprise license for InstallBuilder, it's not in source source control
 
