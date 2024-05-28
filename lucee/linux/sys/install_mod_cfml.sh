@@ -161,6 +161,14 @@ function getLinuxVersion {
 			local DIST='Mandrake'
 			local PSUEDONAME=`cat /etc/mandrake-release | sed s/.*\(// | sed s/\)//`
 			local REV=`cat /etc/mandrake-release | sed s/.*release\ // | sed s/\ .*//`
+   		elif [ -f /etc/alma-release ] ; then
+			local DIST='Redhat'
+			local PSUEDONAME=`cat /etc/alma-release | sed s/.*\(// | sed s/\)//`
+			local REV=`cat /etc/alma-release | sed s/.*release\ // | sed s/\ .*//`
+      		elif [ -f /etc/rocky-release ] ; then
+			local DIST='Redhat'
+			local PSUEDONAME=`cat /etc/rocky-release | sed s/.*\(// | sed s/\)//`
+			local REV=`cat /etc/rocky-release | sed s/.*release\ // | sed s/\ .*//`
 		elif [ -f /etc/debian_version ] ; then
 			local DIST="Debian `cat /etc/debian_version`"
 			local REV=""
@@ -175,55 +183,52 @@ function getLinuxVersion {
 }
 
 function autodetectApacheCTL {
-        # this function will be called if the $myApacheCTL variable is blank
-        # and can be expanded upon as different OS's are tried and as OS's evolve.
-	
-	echo "* ApacheCTL undefined, autodetecting...";
-	
-	# GetLinuxVersion will return myLinuxVersion
+    # this function will be called if the $myApacheCTL variable is blank
+    # and can be expanded upon as different OS's are tried and as OS's evolve.
 
-	if [[ $myLinuxVersion == *RedHat*  ]] || [[ $myLinuxVersion == *Debian*  ]]; then
-		# RedHat and Debian keep the apachectl file in the same place usually,
-		# and will also cover CentOS, Ubuntu, and Mint.
-		
-		echo "* Checking default location of ApacheCTL...";
+    echo "* ApacheCTL undefined, autodetecting...";
 
-		local ctlFileFound=0;
+    # GetLinuxVersion will return myLinuxVersion
 
-		# test the default location
-		local defaultLocation="/usr/sbin/apachectl";
-		if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
-			echo "* NOT found in /usr/sbin/apachectl...";
-		else
-			# looks good, set the variable
-			myApacheCTL="/usr/sbin/apachectl";
-			local ctlFileFound=1;
-                        echo "* Found /usr/sbin/apachectl [SUCCESS]";
-                fi
-	
-		local defaultLocation="/usr/sbin/apache2ctl";
-                if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
-                        echo "* NOT found in /usr/sbin/apache2ctl...";
-                else
-                        # looks good, set the variable
-                        myApacheCTL="/usr/sbin/apache2ctl";
-			local ctlFileFound=1;
-                        echo "* Found /usr/sbin/apache2ctl [SUCCESS]";
-                fi
-			
-		if [[ $ctlFileFound -eq 0 ]]; then
-                        echo "* [ERROR] Apache control file not provided and not in default location. Unable to continue.";
-                        echo "* Use the -c switch to specify the location of the 'apachectl' file manually.";
-                        echo "* Exiting...";
-                        exit 1;
-		fi
+    if [[ $myLinuxVersion == *RedHat*  ]] || [[ $myLinuxVersion == *Debian*  ]]; then
+        # RedHat and Debian keep the apachectl file in the same place usually,
+        # and will also cover CentOS, Ubuntu, and Mint.
+        # as of Apache2, RHEL & RHEL CLONES use httpd, located /usr/sbin/httpd
 
-	else
-                echo "* [ERROR] Apache control file not provided and no default exists for this OS.";
-                echo "* Use the -c switch to specify the location of the 'apachectl' file manually.";
-                echo "* Exiting...";
-                exit 1;
-	fi
+        echo "* Checking default location of ApacheCTL...";
+
+        local ctlFileFound=0;
+
+        if [[ $myLinuxVersion == *RedHat* ]]; then
+            # For Red Hat, use /usr/sbin/httpd
+            local defaultLocation="/usr/sbin/httpd";
+        else
+            # For Debian and other distributions, continue using the existing logic
+            local defaultLocation="/usr/sbin/apachectl";
+        fi
+
+        if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
+            echo "* NOT found in $defaultLocation...";
+        else
+            # looks good, set the variable
+            myApacheCTL="$defaultLocation";
+            local ctlFileFound=1;
+            echo "* Found $defaultLocation [SUCCESS]";
+        fi
+
+        if [[ $ctlFileFound -eq 0 ]]; then
+            echo "* [ERROR] Apache control file not provided and not in default location. Unable to continue.";
+            echo "* Use the -c switch to specify the location of the 'apachectl' file manually.";
+            echo "* Exiting...";
+            exit 1;
+        fi
+
+    else
+        echo "* [ERROR] Apache control file not provided and no default exists for this OS.";
+        echo "* Use the -c switch to specify the location of the 'apachectl' file manually.";
+        echo "* Exiting...";
+        exit 1;
+    fi
 }
 
 function autodetectApacheMod {
