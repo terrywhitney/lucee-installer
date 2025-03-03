@@ -1,73 +1,38 @@
-name: Build Lucee Installer 
+name: Build Lucee Express Templates
 
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
     inputs:
-      LUCEE_VERSION:
-        required: true
-        type: string
-  # Triggers the workflow on push or pull request events but only for the master branch
-  workflow_call:
-    inputs:
-      LUCEE_VERSION:
-        required: true
-        type: string
-      DRY_RUN:
-        required: false
-        default: false
-        type: boolean
-  repository_dispatch:
-     types: [build-installers]
-
+        DRY_RUN:
+            required: false
+            default: true
+            type: boolean
 env:
-  LUCEE_INSTALLER_VERSION: ${{ github.event.inputs.LUCEE_VERSION }}
-  IB_URL: https://releases.installbuilder.com/installbuilder/installbuilder-enterprise-24.3.0-linux-x64-installer.run
-  IB_NAME: installbuilder-enterprise-24.3.0-linux-x64-installer.run
-  lucee_build_version: 6.2.0.109-SNAPSHOT
+  lucee_build_version: 6.2.0.321
 
 jobs:
-  build-installers:
+  build-tomcat9-express-template:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - name: Download and Install InstallBuilder
-      run: |
-        curl ${{ env.IB_URL }} -o ${{ env.IB_NAME }}
-        ls -l
-        chmod a+x ${{ env.IB_NAME }}
-        echo "running installer...."
-        ./${{ env.IB_NAME }} --prefix /tmp/ib --mode unattended
-    - name: Update Template with version
-      run : |
-        cat lucee/lucee.xml.template | sed -e "s,<version>LUCEE_VERSION</version>,<version>${{ env.LUCEE_INSTALLER_VERSION }}</version>," > lucee/lucee.xml
-    - name: Write out license
-      env:
-        INSTALLBUILDER_LICENSE: ${{ secrets.INSTALLBUILDER_LICENSE }}
-      shell: bash
-      run: |
-          echo "$INSTALLBUILDER_LICENSE" >> lucee/license.xml
-    - name: Download Lucee Jar
-      run: |
-        curl --fail https://cdn.lucee.org/lucee-${{ env.LUCEE_INSTALLER_VERSION }}.jar -o lucee-${{ env.LUCEE_INSTALLER_VERSION }}.jar -s
-        pwd
-        ls -l
-        mv lucee-${{ env.LUCEE_INSTALLER_VERSION }}.jar lucee/lucee/lib/
-
     - name: Cache Maven packages
       uses: actions/cache@v4
       with:
         path: ~/.m2
         key: lucee-script-runner-maven-cache
 
-    - name: Download latest Tomcat and Java
+    - name: Download and configure latest Tomcat 9 
       uses: lucee/script-runner@main
       with:
         webroot: ${{ github.workspace }}/
         execute: /download-latest-java-tomcat.cfm
-        luceeVersion: ${{ env.lucee_build_version }}
+        luceeVersion: 6.2.0.321
+      env:
+        express: true
+        expressTomcatVersion: "9.0"
 
-    - name: Prepare Tomcat Linux
+    - name: Prepare Tomcat 9 Express Template
       run: |
         pwd
         cd lucee/tomcat9/
@@ -78,55 +43,60 @@ jobs:
         mv src-tomcat/linux lucee/tomcat9/tomcat
         cp -ar lucee/tomcat9/tomcat-lucee-conf/* lucee/tomcat9/tomcat
         ls -lRh
-    - name: Build Lucee Installer - Linux x64
-      run: |
-        cd lucee
-        /tmp/ib/bin/builder build lucee.xml linux-x64 --verbose --license license.xml
+        zip -R lucee-tomcat9-template.zip lucee/tomcat9
 
-    - name: Prepare Tomcat Windows
+    - name: Upload Artifact - Tomcat 9 Express Template
+      uses: actions/upload-artifact@v4
+      with:
+          name: lucee-tomcat9-template
+          path: lucee-tomcat9-template.zip
+          retention-days: 1
+          compression-level: 0
+
+  build-tomcat10-express-template:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Cache Maven packages
+      uses: actions/cache@v4
+      with:
+        path: ~/.m2
+        key: lucee-script-runner-maven-cache
+
+    - name: Download and configure latest Tomcat 10.1
+      uses: lucee/script-runner@main
+      with:
+        webroot: ${{ github.workspace }}/
+        execute: /download-latest-java-tomcat.cfm
+        luceeVersion: 6.2.0.321
+      env:
+        express: true
+        expressTomcatVersion: "10.1"
+
+    - name: Prepare Tomcat 10.1 Express Template
       run: |
+        pwd
         cd lucee/tomcat9/
-        rm -rfv tomcat
+        rm -rf tomcat
         cd ../..
         pwd
         ls -l
-        mv src-tomcat/windows lucee/tomcat9/tomcat
+        mv src-tomcat/linux lucee/tomcat9/tomcat
         cp -ar lucee/tomcat9/tomcat-lucee-conf/* lucee/tomcat9/tomcat
         ls -lRh
-    - name: Build Lucee Installer - Windows x64
-      run: |
-        cd lucee
-        /tmp/ib/bin/builder build lucee.xml windows-x64 --verbose --license license.xml
+        zip -R lucee-tomcat10-template.zip lucee/tomcat9
 
-    - name: check linux installer has correct version
-      run: |
-        ls -laht /tmp/ib/output/
-        /tmp/ib/output/lucee-${{ env.LUCEE_INSTALLER_VERSION }}-linux-x64-installer.run --version
-        out=`/tmp/ib/output/lucee-${{ env.LUCEE_INSTALLER_VERSION }}-linux-x64-installer.run --version`
-        tet="Lucee ${{ env.LUCEE_INSTALLER_VERSION }}"
-        if [[ $out != $tet* ]]
-        then
-          echo Incorrect version banner
-          exit 1
-        fi
-    - name: Upload Artifact - Linux Installer
+    - name: Upload Artifact - Tomcat 9 Express Template
       uses: actions/upload-artifact@v4
       with:
-          name: lucee-installer-${{ env.LUCEE_INSTALLER_VERSION }}-linux-run
-          path: /tmp/ib/output/*.run
-          retention-days: 1
-          compression-level: 0
-    - name: Upload Artifact - Windows Installer
-      uses: actions/upload-artifact@v4
-      with:
-          name: lucee-installer-${{ env.LUCEE_INSTALLER_VERSION }}-windows
-          path: /tmp/ib/output/*.exe
+          name: lucee-tomcat10.1-template
+          path: lucee-tomcat10.1-template.zip
           retention-days: 1
           compression-level: 0
 
   test-linux:
     runs-on: ubuntu-latest
-    needs: build-installers
+    needs: [build-tomcat9-express-template, build-tomcat10-express-template]
     steps:
       - name: Download Linux Installer artifact
         uses: actions/download-artifact@v4
@@ -161,7 +131,7 @@ jobs:
             ls -l /tmp/lucee/tomcat/logs/
             echo "----- catalina.out"
             [ -r /tmp/lucee/tomcat/logs/catalina.out ] && cat /tmp/lucee/tomcat/logs/catalina.out
-            
+
             #cat /tmp/lucee/tomcat/lucee-server/context/logs/out.log
             #cat /tmp/lucee/tomcat/lucee-server/context/logs/err.log
             #cat /tmp/lucee/tomcat/logs/catalina.out
@@ -209,20 +179,16 @@ jobs:
     - name: Download Windows Installer artifact
       uses: actions/download-artifact@v4
       with:
-        name: lucee-installer-${{ env.LUCEE_INSTALLER_VERSION }}-windows
-    - name: Download Linux Installer artifact
-      uses: actions/download-artifact@v4
-      with:
-        name: lucee-installer-${{ env.LUCEE_INSTALLER_VERSION }}-linux-run
+        name: lucee-express
     - name: Cache Maven packages
       uses: actions/cache@v4
       with:
         path: ~/.m2
         key: lucee-script-runner-maven-cache
 
-    - name: Publish Installers to S3
+    - name: Publish Express Template to S3
       uses: lucee/script-runner@main
       with:
         webroot: ${{ github.workspace }}/
-        execute: /publish-to-s3.cfm
+        execute: /publish-express-template-s3.cfm
         luceeVersion: ${{ env.lucee_build_version }}

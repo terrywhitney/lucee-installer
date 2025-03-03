@@ -12,9 +12,9 @@
 	}
 
 	logger( "Publish Installers to s3, using #server.lucee.version#" );
-	logger( " - for installers for Lucee #server.system.environment.lucee_version# " );
+	logger( " - for installers for Lucee #server.system.environment.LUCEE_INSTALLER_VERSION# " );
 
-	version = server.system.environment.lucee_version;
+	version = server.system.environment.LUCEE_INSTALLER_VERSION;
 
 	currDir = getDirectoryFromPath( getCurrentTemplatePath() );
 
@@ -56,6 +56,7 @@
 		throw fail; 
 	}
 	logger ("" );
+
 	if ( listLen( version, "-" ) gt 1 ){
 		logger( "Not publishing to S3, only stable releases are published" );
 	} else {
