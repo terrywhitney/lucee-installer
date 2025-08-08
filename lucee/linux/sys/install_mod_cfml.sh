@@ -23,6 +23,9 @@
 #		-c /path/to/apachectl
 #			Full system path to Apache Control Script.
 #			IE: /usr/sbin/apachectl
+#		-e /path/to/httpd
+#			Full system path to Apache httpd file, as newer versions of RH etc don't support -M
+#			IE: /usr/sbin/httpd
 #		-k "secret key"
 #			The secret key that secures the communication between
 #			mod_cfml.so and the tomcat valve. We recommend a random
@@ -51,6 +54,8 @@ OPTIONS:
 				      /usr/lib64/httpd/modules (centos 64-bit)
    -c	/path/to/apachectl	: Full system path to Apache Control Script.
 				  IE: /usr/sbin/apachectl
+   -e	/path/to/httpd  	: Full system path to Apache httpd.
+				  IE: /usr/sbin/httpd
    -k   "secret key"		: The secret key that secures the communication
 				  between mod_cfml.so and the tomcat valve. We
 				  recommend a random alphanumeric string
@@ -65,11 +70,12 @@ INSTALL_DIR=$(dirname $0)
 myMode=
 myApacheConf=
 myApacheCTL=
+myApacheHttpd=
 myApacheMods=
 mySecretKey=
 
 # parse command-line params
-while getopts hm:f:c:d:k: OPTION
+while getopts hm:f:c:d:k:e: OPTION
 do
      case $OPTION in
 	 h)
@@ -91,6 +97,9 @@ do
 	 k)
 	     mySecretKey=$OPTARG
 	     ;;
+         e)
+             myApacheHttpd=$OPTARG
+             ;;
          ?)
              usage
 	     exit
@@ -103,6 +112,9 @@ done
 ###################
 
 function verifyInput {
+
+        echo "-- install_mod_cfml.sh --";
+
 	# verify myMode
 	if [[ -z $myMode ]] && [[ $myMode != "install" ]] && [[ $myMode != "test" ]]; then
 		# mode isn't set to a proper mode
@@ -121,6 +133,16 @@ function verifyInput {
         if [[ -z $myApacheCTL ]] || [[ ! -f $myApacheCTL ]] || [[ ! -x $myApacheCTL ]]; then
                 echo "* Provided ApacheCTL verification failed.";
                 autodetectApacheCTL;
+        else
+                echo "Apachectl: $myApacheCTL";
+        fi
+
+        # verify myApacheHttpd
+        if [[ -z $myApacheHttpd ]] || [[ ! -f $myApacheHttpd ]] || [[ ! -x $myApacheHttpd ]]; then
+                echo "* Provided Httpd verification failed.";
+                autodetectApacheHttpd;
+        else 
+	        echo "Apache Httpd: $myApacheHttpd";
         fi
 
         # verify module directory
@@ -133,6 +155,8 @@ function verifyInput {
         if [[ -z $myApacheConf ]] || [[ ! -f $myApacheConf ]] || [[ ! -w $myApacheConf ]]; then
                 echo "* Provided Apache Config file verification failed.";
                 audodetectApacheConf;
+        else
+                echo "Apache Conf: $myApacheConf";
         fi
 } # close verifyInput
 
@@ -150,6 +174,7 @@ function getLinuxVersion {
 		local OSSTR="${OS} `oslevel` (`oslevel -r`)"
 	elif [ "${OS}" = "Linux" ] ; then
 		local KERNEL=`uname -r`
+
 		if [ -f /etc/redhat-release ] ; then
 			local DIST='RedHat'
 			local PSUEDONAME=`cat /etc/redhat-release | sed s/.*\(// | sed s/\)//`
@@ -221,6 +246,58 @@ function autodetectApacheCTL {
 	else
                 echo "* [ERROR] Apache control file not provided and no default exists for this OS.";
                 echo "* Use the -c switch to specify the location of the 'apachectl' file manually.";
+                echo "* Exiting...";
+                exit 1;
+	fi
+}
+
+function autodetectApacheHttpd {
+        # this function will be called if the $myApacheHttpd variable is blank
+        # and can be expanded upon as different OS's are tried and as OS's evolve.
+	
+	echo "* ApacheHttpd undefined, autodetecting...";
+	
+	# GetLinuxVersion will return myLinuxVersion
+
+	if [[ $myLinuxVersion == *RedHat*  ]] || [[ $myLinuxVersion == *Debian*  ]]; then
+		# RedHat and Debian keep the apache httpd file in the same place usually,
+		# and will also cover CentOS, Ubuntu, and Mint.
+		
+		echo "* Checking default location of ApacheCTL...";
+
+		local ctlFileFound=0;
+
+		# test the default location
+		local defaultLocation="/usr/sbin/httpd";
+		if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
+			echo "* NOT found in /usr/sbin/httpd...";
+		else
+			# looks good, set the variable
+			myApacheHttpd="/usr/sbin/httpd";
+			local ctlFileFound=1;
+                        echo "* Found /usr/sbin/httpd [SUCCESS]";
+                fi
+	
+		local defaultLocation="/usr/sbin/apache2";
+                if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
+                        echo "* NOT found in /usr/sbin/apache2...";
+                else
+                        # looks good, set the variable
+                        myApacheHttpd="/usr/sbin/apache2";
+			local ctlFileFound=1;
+                        echo "* Found /usr/sbin/apache2 [SUCCESS]";
+                fi
+			
+		if [[ $ctlFileFound -eq 0 ]]; then
+                        echo "* [ERROR] Apache httpd not provided and not in default location. Unable to continue.";
+                        echo "* Use the -c switch to specify the location of the 'httpd' file manually.";
+                        echo "* Exiting...";
+                        exit 1;
+		fi
+
+	else
+                echo "* [ERROR] Apache control file not provided and no default exists for this OS.";
+                echo "* Use the -c switch to specify the location of the 'httpd' file manually.";
                 echo "* Exiting...";
                 exit 1;
 	fi
@@ -370,6 +447,10 @@ function audodetectApacheConf {
 
 function autodetectApacheVersion {
 	echo "* Attempting to detect Apache version...";
+        myBitType=`uname -m`;
+        myArch=`uname -i`;
+
+        echo "Arch: $myArch BitType: $myBitType";
 	
 	# parse the result to save the Apache version
 	if [[ `$myApacheCTL -V | grep 'Apache/2.4'` ]]; then
@@ -382,12 +463,6 @@ function autodetectApacheVersion {
 		echo "* [ERROR] Unable to detect Apache version or version not supported.";
 		echo "* Unable to continue.";
 		echo "* Exiting... ";
-		exit 1;
-	fi
-	
-	# check for 32-bit Apache 2.4 (not supported - does it exist?)
-	if [[ ! `uname -m` == "x86_64" ]] && [[ $myApacheVersion == "24" ]]; then
-		echo "* [ERROR] Apache 2.4 on 32-bit systems is not supported. Aborting...";
 		exit 1;
 	fi
 }
@@ -428,32 +503,40 @@ function checkModCFMLAlreadyInstalled {
 function installModCFML {
 	# get bit type
 	myBitType=`uname -m`;
+        myArch=`uname -i`;
+
+        if [[ $myArch == "unknown" ]]; then
+                echo "uname -i returned unknown, trying arch instead";
+                myArch=`arch`;
+        fi
+
+        echo "Arch: $myArch BitType: $myBitType";
 
 	# check for existance of source file
 	if [[ $myLinuxVersion == *RedHat*  ]]; then
-		if [[ $myBitType == "x86_64" ]]; then
+		if [[ $myBitType == "x86_64" || $myBitType == "aarch64" ]]; then
 			# 64-bit
 			if [[ $myApacheVersion == "24" ]]; then			
-				if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd24-x64/mod_cfml.so ]]; then
-					echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/centos-httpd24-x64/mod_cfml.so.";
+				if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd24-$myArch/mod_cfml.so ]]; then
+					echo "* [ERROR] Unable to find $INSTALL_DIR/mod_cfml/centos-httpd24-$myArch/mod_cfml.so.";
 					echo "* Nothing to do.";
 					exit 1;
 				else
 					# copy mod_cfml.so to modules directory
-					cp $INSTALL_DIR/mod_cfml/centos-httpd24-x64/mod_cfml.so $myApacheMods;
+					cp $INSTALL_DIR/mod_cfml/centos-httpd24-$myArch/mod_cfml.so $myApacheMods;
 					if [ ! $? -eq 0 ]; then
 						echo "* [ERROR] Unable to copy mod_cfml.so to modules directory.";
 						exit 1;
 					fi
 				fi
 			elif [[ $myApacheVersion == "22" ]]; then
-                                if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd22-x64/mod_cfml.so ]]; then
-                                        echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/centos-httpd22-x64/mod_cfml.so.";
+                                if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd22-$myArch/mod_cfml.so ]]; then
+                                        echo "* [ERROR] Unable to find $INSTALL_DIR/mod_cfml/centos-httpd22-$myArch/mod_cfml.so.";
                                         echo "* Nothing to do.";
                                         exit 1;
                                 else
                                         # copy mod_cfml.so to modules directory
-                                        cp $INSTALL_DIR/mod_cfml/centos-httpd22-x64/mod_cfml.so $myApacheMods;
+                                        cp $INSTALL_DIR/mod_cfml/centos-httpd22-$myArch/mod_cfml.so $myApacheMods;
                                         if [ ! $? -eq 0 ]; then
                                                 echo "* [ERROR] Unable to copy mod_cfml.so to modules directory.";
                                                 exit 1;
@@ -467,13 +550,13 @@ function installModCFML {
                                 echo "* Nothing to do.";
                                 exit 1;
                         elif [[ $myApacheVersion == "22" ]]; then
-                                if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd22-x64/mod_cfml.so ]]; then
+                                if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd22-$myArch/mod_cfml.so ]]; then
                                         echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/centos-httpd22-x86/mod_cfml.so.";
                                         echo "* Nothing to do.";
                                         exit 1;
                                 else
                                         # copy mod_cfml.so to modules directory
-                                        cp $INSTALL_DIR/mod_cfml/centos-httpd22-x86/mod_cfml.so $myApacheMods;
+                                        cp $INSTALL_DIR/mod_cfml/centos-httpd22-$myArch/mod_cfml.so $myApacheMods;
                                         if [ ! $? -eq 0 ]; then
                                                 echo "* [ERROR] Unable to copy mod_cfml.so to modules directory.";
                                                 exit 1;
@@ -494,29 +577,29 @@ function installModCFML {
 	        echo "VDirHeader false" >> $myApacheConf;
 	        echo "" >> $myApacheConf;
 	elif [[ $myLinuxVersion == *Debian*  ]]; then
-                if [[ $myBitType == "x86_64" ]]; then
+                if [[ $myBitType == "x86_64" || $myBitType == "aarch64" ]]; then
 			# 64-bit
                         if [[ $myApacheVersion == "24" ]]; then
-                                if [[ ! -f $INSTALL_DIR/mod_cfml/ubuntu-httpd24-x64/mod_cfml.so ]]; then
-                                        echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/ubuntu-httpd24-x64/mod_cfml.so.";
+                                if [[ ! -f $INSTALL_DIR/mod_cfml/ubuntu-httpd24-$myArch/mod_cfml.so ]]; then
+                                        echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/ubuntu-httpd24-$myArch/mod_cfml.so.";
                                         echo "* Nothing to do.";
                                         exit 1;
                                 else
                                         # copy mod_cfml.so to modules directory
-                                        cp $INSTALL_DIR/mod_cfml/ubuntu-httpd24-x64/mod_cfml.so $myApacheMods;
+                                        cp $INSTALL_DIR/mod_cfml/ubuntu-httpd24-$myArch/mod_cfml.so $myApacheMods;
                                         if [ ! $? -eq 0 ]; then
                                                 echo "* [ERROR] Unable to copy mod_cfml.so to modules directory.";
                                                 exit 1;
                                         fi
                                 fi
                         elif [[ $myApacheVersion == "22" ]]; then
-                                if [[ ! -f $INSTALL_DIR/mod_cfml/ubuntu-httpd22-x64/mod_cfml.so ]]; then
-                                        echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/ubuntu-httpd22-x64/mod_cfml.so.";
+                                if [[ ! -f $INSTALL_DIR/mod_cfml/ubuntu-httpd22-$myArch/mod_cfml.so ]]; then
+                                        echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/ubuntu-httpd22-$myArch/mod_cfml.so.";
                                         echo "* Nothing to do.";
                                         exit 1;
                                 else
                                         # copy mod_cfml.so to modules directory
-                                        cp $INSTALL_DIR/mod_cfml/ubuntu-httpd22-x64/mod_cfml.so $myApacheMods;
+                                        cp $INSTALL_DIR/mod_cfml/ubuntu-httpd22-$myArch/mod_cfml.so $myApacheMods;
                                         if [ ! $? -eq 0 ]; then
                                                 echo "* [ERROR] Unable to copy mod_cfml.so to modules directory.";
                                                 exit 1;
@@ -530,7 +613,7 @@ function installModCFML {
                                 echo "* Nothing to do.";
                                 exit 1;
                         elif [[ $myApacheVersion == "22" ]]; then
-                                if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd22-x64/mod_cfml.so ]]; then
+                                if [[ ! -f $INSTALL_DIR/mod_cfml/centos-httpd22-x86/mod_cfml.so ]]; then
                                         echo "* [ERROR] Unable to verify $INSTALL_DIR/mod_cfml/centos-httpd22-x86/mod_cfml.so.";
                                         echo "* Nothing to do.";
                                         exit 1;
@@ -587,10 +670,14 @@ function installModCFML {
 	echo "* Restarting Apache so changes take effect...";
 	$myApacheCTL restart;
 	if [ ! $? -eq 0 ]; then
-                echo "* [FAIL]";
-		echo "* Apache restart failed. Please try to restart manually.";
-                echo "* Aborting....";
-                exit 1;
+                echo "* Running in Docker? trying httpd directly!";
+                $myApacheHttpd -k restart
+                if [ ! $? -eq 0 ]; then
+                        echo "* [FAIL]";
+                        echo "* Apache restart failed. Please try to restart manually.";
+                        echo "* Aborting....";
+                        exit 1;
+                fi
         fi
 }
 

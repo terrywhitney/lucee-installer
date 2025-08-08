@@ -20,6 +20,8 @@
 #		-c /path/to/apachectl
 #			Full system path to Apache Control Script.
 #			IE: /usr/sbin/apachectl
+#		-a ajp secret
+#		-p ajp port
 #		-h
 #			Displays usage info
 ###############################################################################
@@ -43,6 +45,10 @@ OPTIONS:
 				  IE: /etc/httpd/conf/httpd.conf (rhel/centos)
    -c	/path/to/apachectl	: Full system path to Apache Control Script.
 				  IE: /usr/sbin/apachectl
+   -e	/path/to/httpd	: Full system path to Apache httpd.
+   -a	ajp secret
+   -p	ajp port
+				  IE: /usr/sbin/httpd
    -h				: Displays this usage screen
 
 EOF
@@ -53,10 +59,12 @@ myMode=
 myHTTPPort=
 myApacheConf=
 myApacheCTL=
+myApacheHttpd=
 installModPerlHit=
-
+myAjpSecret=
+myAjpPort=
 # parse command-line params
-while getopts “hm:l:p:t:f:c:” OPTION
+while getopts “hm:l:p:t:f:c:e:a:p” OPTION
 do
      case $OPTION in
 	 h)
@@ -75,6 +83,16 @@ do
          c)
              myApacheCTL=$OPTARG
              ;;
+         e)
+             myApacheHttpd=$OPTARG
+             ;;
+         a)
+		 	 myAjpSecret=$OPTARG
+			 ;;
+         p)
+		 	 myAjpPort=$OPTARG
+			 ;;
+
          ?)
              usage
 	     exit 1
@@ -92,20 +110,48 @@ else
 	if [[ $myMode = "install" ]]; then
 		# if we're install mode, make sure we have install vars
 	        if [[ -z $myHTTPPort ]]; then
-			# if no AJP or HTTP port, default to AJP 8009
-			myHTTPPort=8888;
-               	fi
+				# if no HTTP port, default http to 8888
+				myHTTPPort=8888;
+            fi
+			if [[ -z $myAjpPort ]]; then
+				# if no AJP, default to AJP 8009
+				myAjpPort=8009
+            fi
 	fi # close install mode checks
 fi # close mode check
 
+echo "-- install_mod_proxy.sh --";
+
+if [[ $myAjpSecret = "" ]]; then
+	echo "AJP secret (-a) is mandatory";
+	exit 1;
+fi
+
+getLinuxVersion;
+echo "Linux version: $myLinuxVersion";
+
 # verify myApacheCTL
 if [[ -z $myApacheCTL ]] || [[ ! -x $myApacheCTL ]]; then
-        # apachectl is needed for testing and install, try to autodetect
-        autodetectApacheCTL;
+	echo "* Provided ApacheCTL verification failed.";
+	# apachectl is needed for testing and install, try to autodetect
+	autodetectApacheCTL;
+else
+	echo "Apachectl: $myApacheCTL";
 fi
 
 if [[ -z $myApacheConf ]] || [[ ! -f $myApacheConf ]]; then
-	audodetectApacheConf;
+	echo "* Provided Apache conf verification failed.";
+	autoDetectApacheConf;
+else 
+	echo "Apache Conf: $myApacheConf";
+fi
+
+# verify myApacheHttpd
+if [[ -z $myApacheHttpd ]] || [[ ! -f $myApacheHttpd ]] || [[ ! -x $myApacheHttpd ]]; then
+	echo "* Provided Httpd verification failed.";
+	autodetectApacheHttpd;
+else 
+	echo "Apache Httpd: $myApacheHttpd";
 fi
 }
 
@@ -136,7 +182,7 @@ function getLinuxVersion {
 
 	if [ "${OS}" = "SunOS" ] ; then
 		local OS=Solaris
-		local ARCH=`uname -p`	
+		local ARCH=`uname -p`
 		local OSSTR="${OS} ${REV}(${ARCH} `uname -v`)"
 	elif [ "${OS}" = "AIX" ] ; then
 		local OSSTR="${OS} `oslevel` (`oslevel -r`)"
@@ -160,7 +206,7 @@ function getLinuxVersion {
 		if [ -f /etc/UnitedLinux-release ] ; then
 			local DIST="${DIST}[`cat /etc/UnitedLinux-release | tr "\n" ' ' | sed s/VERSION.*//`]"
 		fi
-	
+
 		local OSSTR="${OS} ${DIST} ${REV}(${PSUEDONAME} ${KERNEL} ${MACH})"
 	fi
 	myLinuxVersion=${OSSTR};
@@ -169,17 +215,17 @@ function getLinuxVersion {
 function autodetectApacheCTL {
         # this function will be called if the $myApacheCTL variable is blank
         # and can be expanded upon as different OS's are tried and as OS's evolve.
-	
+
 	echo -n "ApacheCTL undefined, autodetecting OS...";
-	
+
         # use the getLinuxVersion function to try and see if we know what we're being run on
 	# GetLinuxVersion will return myLinuxVersion
-        getLinuxVersion;
+    getLinuxVersion;
 
 	if [[ $myLinuxVersion == *RedHat*  ]] || [[ $myLinuxVersion == *Debian*  ]]; then
 		# RedHat and Debian keep the apachectl file in the same place usually,
 		# and will also cover CentOS, Ubuntu, and Mint.
-		
+
 		echo "[SUCCESS]";
 		echo -n "Checking default location of ApacheCTL...";
 
@@ -195,7 +241,7 @@ function autodetectApacheCTL {
 			local ctlFileFound=1;
                         echo "[SUCCESS]";
                 fi
-	
+
 		local defaultLocation="/usr/sbin/apache2ctl";
                 if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
                         echo "NOT found in /usr/sbin/apache2ctl...";
@@ -205,7 +251,7 @@ function autodetectApacheCTL {
 			local ctlFileFound=1;
                         echo "[SUCCESS]";
                 fi
-			
+
 		if [[ $ctlFileFound -eq 0 ]]; then
                         echo "[FAIL]";
                         echo "Error: Apache control file not provided and not in default location. Unable to continue.";
@@ -223,132 +269,199 @@ function autodetectApacheCTL {
 	fi
 }
 
-function audodetectApacheConf {
+function autoDetectApacheConf {
 	# this function will be called if the $myApacheConf variable is blank
-        # and can be expanded upon as different OS's are tried and as OS's evolve.
+	# and can be expanded upon as different OS's are tried and as OS's evolve.
 
-        echo "ApacheConf undefined, trying to autodetect...";
-
+	echo "ApacheConf undefined, trying to autodetect...";	
 	myApacheConf="";
 
-        # use the getLinuxVersion function to try and see if we know what we're being run on
-        # GetLinuxVersion will return myLinuxVersion
-        getLinuxVersion;
+	# use the getLinuxVersion function to try and see if we know what we're being run on
+	# GetLinuxVersion will return myLinuxVersion
+	getLinuxVersion;
 
-        if [[ $myLinuxVersion == *RedHat*  ]]; then
-                echo "Detected RedHat-based build.";
-                echo -n "Checking default location for Apache config...";
-		
+	if [[ $myLinuxVersion == *RedHat*  ]]; then
+		echo "Detected RedHat-based build.";
+		echo -n "Checking default location for Apache config...";
+
 		# test the default location
 		local defaultLocation="/etc/httpd/conf/httpd.conf";
-		
-	        if [[ ! -f $defaultLocation ]]; then
-                        echo "[FAIL]";
-                        echo "Error: Apache config file not provided and not in default location. Unable to continue.";
-                        echo "Use the -f switch to specify the location of the Apache config file manually.";
-                        echo "Exiting...";
-                        exit 1;
-                else
-                        # looks good, set the variable
-                        myApacheConf=$defaultLocation;
-                        echo "[SUCCESS]";
+
+			if [[ ! -f $defaultLocation ]]; then
+						echo "[FAIL]";
+						echo "Error: Apache config file not provided and not in default location. Unable to continue.";
+						echo "Use the -f switch to specify the location of the Apache config file manually.";
+						echo "Exiting...";
+						exit 1;
+				else
+						# looks good, set the variable
+						myApacheConf=$defaultLocation;
+						echo "found $myApacheConf [SUCCESS]";
 		fi
 
 	elif [[ $myLinuxVersion == *Debian*  ]]; then
-                echo "Detected Debian-based build.";
-                echo -n "Checking default location of Apache config...";
+		echo "Detected Debian-based build.";
+		echo -n "Checking default location of Apache config...";
 
-                # test the default location
-                local defaultLocation="/etc/apache2/apache2.conf";
-                if [[ ! -f ${defaultLocation} ]]; then
-                        echo "[FAIL]";
-                        echo "Error: Apache config file not provided and not in default location. Unable to continue.";
-                        echo "Use the -f switch to specify the location of the 'apachectl' file manually.";
-                        echo "Exiting...";
-                        exit 1;
-                else
-                        # looks good, set the variable
-                        myApacheConf=$defaultLocation;
-                        echo "[SUCCESS]";
-                fi
-        fi
+		# test the default location
+		local defaultLocation="/etc/apache2/apache2.conf";
+		if [[ ! -f ${defaultLocation} ]]; then
+				echo "[FAIL]";
+				echo "Error: Apache config file not provided and not in default location. Unable to continue.";
+				echo "Use the -f switch to specify the location of the 'apachectl' file manually.";
+				echo "Exiting...";
+				exit 1;
+		else
+				# looks good, set the variable
+				myApacheConf=$defaultLocation;
+				echo "found $myApacheConf [SUCCESS]";
+		fi
+	fi
 
-        if [[ -z $myApacheConf ]]; then
-                # if we're still empty, script can't find it.
-                echo "Error: No Apache config file provided and can't autodetect.";
-                echo "You can manually set the Apache config file using the -f switch.";
-                echo "Exiting...";
-                exit 1;
-        fi
+	if [[ -z $myApacheConf ]]; then
+		# if we're still empty, script can't find it.
+		echo "Error: No Apache config file provided and can't autodetect.";
+		echo "You can manually set the Apache config file using the -f switch.";
+		echo "Exiting...";
+		exit 1;
+	fi
+}
+
+function autodetectApacheHttpd {
+	# this function will be called if the $myApacheHttpd variable is blank
+	# and can be expanded upon as different OS's are tried and as OS's evolve.
+
+	echo "* ApacheHttpd undefined, autodetecting...";
+	getLinuxVersion;
+
+	# GetLinuxVersion will return myLinuxVersion
+
+	if [[ $myLinuxVersion == *RedHat*  ]] || [[ $myLinuxVersion == *Debian*  ]]; then
+		# RedHat and Debian keep the apache httpd file in the same place usually,
+		# and will also cover CentOS, Ubuntu, and Mint.
+
+		echo "* Checking default location of Apache httpd...";
+
+		local httpdFileFound=0;
+
+		# test the default location
+		local defaultLocation="/usr/sbin/httpd";
+		if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
+			echo "* NOT found in /usr/sbin/httpd...";
+		else
+			# looks good, set the variable
+			myApacheHttpd="/usr/sbin/httpd";
+			local httpdFileFound=1;
+			echo "* Found /usr/sbin/httpd [SUCCESS]";
+		fi
+
+		# test the alt default location
+		local defaultLocation="/usr/sbin/apache2";
+		if [[ ! -f ${defaultLocation} ]] || [[ ! -x ${defaultLocation} ]]; then
+			echo "* NOT found in /usr/sbin/apache2...";
+		else
+			# looks good, set the variable
+			myApacheHttpd="/usr/sbin/apache2";
+			local httpdFileFound=1;
+			echo "* Found /usr/sbin/apache2 [SUCCESS]";
+		fi
+
+		if [[ $httpdFileFound -eq 0 ]]; then
+			echo "* [ERROR] Apache httpd not provided and not in default location. Unable to continue.";
+			echo "* Use the -e switch to specify the location of the 'httpd' file manually.";
+			echo "* Exiting...";
+			exit 1;
+		fi
+
+	else
+		echo "* [ERROR] Apache httpd file not provided and no default exists for this OS.";
+		echo "* Use the -e switch to specify the location of the 'httpd' file manually.";
+		echo "* Exiting...";
+		exit 1;
+	fi
 }
 
 function checkModProxy {
 	# configure found variable
 	modProxyFound=0;
-	
+
 	# check the variations we know of. Additional functional variations can be
 	# added to this loop as we find them.
-
-	# look for proxy_html_module in stdout (ubuntu)
-	echo -n "Checking for 'proxy_html_module' in stdout...";
-	searchFoundProxy=`$myApacheCTL -M | grep -c proxy_html_module`;
-	if [[ "$searchFoundProxy" -eq "0" ]]; then
-		echo "[NOT FOUND]";
-        else
-                echo "[FOUND]";
-		modProxyFound=1;
-        fi
-	
-	# look for proxy_html_module in stderr (ubuntu)
-	if [[ "$modProxyFound" -eq "0" ]]; then
-	        echo -n "Checking for 'proxy_html_module' in stderr...";
-	        searchFoundProxy=`$myApacheCTL -M 2>&1 | grep -c proxy_html_module`;
-        	if [[ "$searchFoundProxy" -eq "0" ]]; then
-                	echo "[NOT FOUND]";
-	        else    
-	                echo "[FOUND]";
+	if [[ $myLinuxVersion == *RedHat* ]]; then
+		# look for proxy_html_module in stdout (ubuntu)
+		echo -n "Checking for 'proxy_html_module' in stdout (using httpd, Redhat )...";
+		searchFoundProxy=`$myApacheHttpd -M | grep -c proxy_html_module`;
+		if [[ "$searchFoundProxy" -eq "0" ]]; then
+			echo "[NOT FOUND]";
+		else
+			echo "[FOUND]";
 			modProxyFound=1;
-	        fi
+		fi
+
+		# look for proxy_http_module in stdout (centos)
+		if [[ "$modProxyFound" -eq "0" ]]; then
+			echo -n "Checking for 'proxy_http_module' in stdout...(httpd) ";
+			searchFoundProxy=`$myApacheHttpd -t -D DUMP_MODULES 2>&1 | grep -c proxy_http_module`;
+			if [[ "$searchFoundProxy" -eq "0" ]]; then
+				echo "[NOT FOUND]";
+			else
+				echo "[FOUND]";
+				modProxyFound=1;
+			fi
+		fi
+
+		# look for proxy_http_module in stderr (centos)
+		if [[ "$modProxyFound" -eq "0" ]]; then
+			echo -n "Checking for 'proxy_http_module' in stderr...(httpd) ";
+			searchFoundProxy=`$myApacheHttpd -M 2>&1 | grep -c proxy_http_module`;
+			if [[ "$searchFoundProxy" -eq "0" ]]; then
+				echo "[NOT FOUND]";
+			else
+				echo "[FOUND]";
+				modProxyFound=1;
+			fi
+		fi
+
+	else
+		# Debian / ubuntu
+		# Look for proxy_html_module in stdout
+		echo -n "Checking for 'proxy_html_module' in stdout... (using apachectl, ubuntu) ";
+		searchFoundProxy=`$myApacheCTL -t -D DUMP_MODULES | grep -c proxy_html_module`;
+		if [[ "$searchFoundProxy" -eq "0" ]]; then
+			echo "[NOT FOUND]";
+		else
+			echo "[FOUND]";
+			modProxyFound=1;
+		fi
+
+		# look for proxy_html_module in stderr
+		if [[ "$modProxyFound" -eq "0" ]]; then
+			echo -n "Checking for 'proxy_html_module' in stderr...(apachectl, ubuntu) ";
+			searchFoundProxy=`$myApacheCTL -t -D DUMP_MODULES 2>&1 | grep -c proxy_html_module`;
+			if [[ "$searchFoundProxy" -eq "0" ]]; then
+				echo "[NOT FOUND]";
+			else
+				echo "[FOUND]";
+				modProxyFound=1;
+			fi
+		fi
 	fi
-
-        # look for proxy_http_module in stdout (centos)
-	if [[ "$modProxyFound" -eq "0" ]]; then
-	        echo -n "Checking for 'proxy_http_module' in stdout...";
-	        searchFoundProxy=`$myApacheCTL -M | grep -c proxy_http_module`;
-	        if [[ "$searchFoundProxy" -eq "0" ]]; then
-	                echo "[NOT FOUND]";
-	        else
-	                echo "[FOUND]";
-			modProxyFound=1;
-	        fi
-	fi
-
-        # look for proxy_http_module in stderr (centos)
-        if [[ "$modProxyFound" -eq "0" ]]; then
-                echo -n "Checking for 'proxy_http_module' in stderr...";
-                searchFoundProxy=`$myApacheCTL -M 2>&1 | grep -c proxy_http_module`;
-                if [[ "$searchFoundProxy" -eq "0" ]]; then
-                        echo "[NOT FOUND]";
-                else
-                        echo "[FOUND]";
-			modProxyFound=1;
-                fi
-        fi
 	
+
 	if [[ "$modProxyFound" -eq "0" ]]; then
 		if [[ $myMode = "install" ]] && [[ -z "$installModProxyHit" ]]; then
 			installModProxy;
 		else
-                	echo "";
-	                echo "FATAL: mod_proxy not found in Apache. Is mod_proxy installed?";
-        	        exit 1;
+			echo "";
+			echo "FATAL: mod_proxy/proxy_http_module/proxy_html_module not found in Apache. Is mod_proxy installed?";
+			exit 1;
 		fi
-        fi
+	fi
 }
 
 function checkModPCFMLAlreadyInstalled {
 	echo -n "Checking for pre-existing mod_proxy for CFML install...";
- 	
+
 	myModPCFMLFound=`grep -i "ProxyPassMatch" ${myApacheConf} | grep -c cfml`;
 
 	# echo "myModPCFMLFound = ${myModPCFMLFound}";
@@ -383,9 +496,9 @@ function installModProxy {
         fi
 
         if [[ $myLinuxVersion == *RedHat*  ]]; then
-                echo "Detected RedHat-based build.";
-		echo "mod_proxy is installed by default with httpd in RHEL/CentOS builds;";
-		echo "This script will not attempt to install mod_proxy on this system.";
+            echo "Detected RedHat-based build.";
+			echo "mod_proxy is installed by default with httpd in RHEL/CentOS builds;";
+			echo "This script will not attempt to install mod_proxy on this system.";
 
         elif [[ $myLinuxVersion == *Debian*  ]]; then
                 echo "Detected Debian-based build.";
@@ -394,9 +507,11 @@ function installModProxy {
                 detectAPTExists;
 
                 # try to install mod_proxy with APT-GET
-		apt-get -y install libapache2-mod-proxy-html;
-		a2enmod proxy;
-		a2enmod proxy_http;
+				#apt-get -y install libapache2-mod-proxy-html;
+				a2enmod proxy;
+				a2enmod proxy_html;
+				a2enmod proxy_http;
+				a2enmod proxy_ajp;
 
                 # see if proxy is now enabled
                 if [[ "$?" -ne "0" ]]; then
@@ -439,14 +554,13 @@ function installProxyCFML {
                 echo "" >> $myApacheConf;
 		echo "<IfModule mod_proxy.c>" >> $myApacheConf;
                 echo "	ProxyPreserveHost On" >> $myApacheConf;
-                echo "	ProxyPassMatch ^/(.+\.cf[cm])(/.*)?$ http://127.0.0.1:${myHTTPPort}/\$1\$2" >> $myApacheConf;
-                echo "	ProxyPassMatch ^/(.+\.cfml)(/.*)?$ http://127.0.0.1:${myHTTPPort}/\$1\$2" >> $myApacheConf;
+                #echo "	ProxyPassMatch ^/(.+\.cf[cm])(/.*)?$ http://127.0.0.1:${myHTTPPort}/\$1\$2" >> $myApacheConf;
+                #echo "	ProxyPassMatch ^/(.+\.cfml)(/.*)?$ http://127.0.0.1:${myHTTPPort}/\$1\$2" >> $myApacheConf;
+                echo "	ProxyPassMatch ^/(.+\.cf[cm])(/.*)?$ ajp://127.0.0.1:${myAjpPort}/\$1\$2 secret=$myAjpSecret" >> $myApacheConf;
+                echo "	ProxyPassMatch ^/(.+\.cfml)(/.*)?$ ajp://127.0.0.1:${myAjpPort}/\$1\$2 secret=$myAjpSecret" >> $myApacheConf;
                 echo "	# optional mappings" >> $myApacheConf;
-                echo "	#ProxyPassMatch ^/flex2gateway/(.*)$ http://127.0.0.1:${myHTTPPort}/flex2gateway/\$1" >> $myApacheConf;
-                echo "	#ProxyPassMatch ^/messagebroker/(.*)$ http://127.0.0.1:${myHTTPPort}/messagebroker/\$1" >> $myApacheConf;
-		echo "	#ProxyPassMatch ^/flashservices/gateway(.*)$ http://127.0.0.1:${myHTTPPort}/flashservices/gateway\$1" >> $myApacheConf;
-		echo "	#ProxyPassMatch ^/openamf/gateway/(.*)$ http://127.0.0.1:${myHTTPPort}/openamf/gateway/\$1" >> $myApacheConf;
-                echo "	#ProxyPassMatch ^/rest/(.*)$ http://127.0.0.1:${myHTTPPort}/rest/\$1" >> $myApacheConf;
+                #echo "	#ProxyPassMatch ^/rest/(.*)$ http://127.0.0.1:${myHTTPPort}/rest/\$1" >> $myApacheConf;
+                echo "	#ProxyPassMatch ^/rest/(.*)$ ajp://127.0.0.1:${myAjpPort}/rest/\$1 secret=$myAjpSecret" >> $myApacheConf;
                 echo "	ProxyPassReverse / http://127.0.0.1:${myHTTPPort}/" >> $myApacheConf;
 		echo "</IfModule>" >> $myApacheConf;
                 echo "" >> $myApacheConf;

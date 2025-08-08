@@ -15,6 +15,7 @@
 	logger( " - for installers for Lucee #server.system.environment.LUCEE_INSTALLER_VERSION# " );
 
 	version = server.system.environment.LUCEE_INSTALLER_VERSION;
+	dry_run = server.system.environment.DRY_RUN ?: "";
 
 	currDir = getDirectoryFromPath( getCurrentTemplatePath() );
 
@@ -45,6 +46,11 @@
 		return;
 	}
 
+	logger("Dry run was [#dry_run#]");
+	if ( dry_run ) {
+		writeOutMarkdown( log );
+	}
+
 	trg = {};
 	s3_bucket = "lucee-downloads";
 	trg.dir = "s3://#server.system.environment.S3_ACCESS_ID_DOWNLOAD#:#server.system.environment.S3_SECRET_KEY_DOWNLOAD#@/#s3_bucket#/";
@@ -57,28 +63,29 @@
 	}
 	logger ("" );
 
-	if ( listLen( version, "-" ) gt 1 ){
-		logger( "Not publishing to S3, only stable releases are published" );
-	} else {
-		trg.linux = "lucee-#version#-linux-x64-installer.run";
-		trg.windows = "lucee-#version#-windows-x64-installer.exe";
+	trg['linux-x64'] =   "lucee-#version#-linux-x64-installer.run";
+	trg['linux-aarch64'] = "lucee-#version#-linux-aarch64-installer.run";
+	trg.windows =        "lucee-#version#-windows-x64-installer.exe";
 
-		loop list="windows,linux" item="os" {
-			if ( !fileExists( currDir & trg[ os ] )){
-				logger( trg[ os ] & " installer missing?" );
-			} else if ( fileExists( trg.dir & trg[ os ] ) ){
-				logger( trg[ os ] & " already on s3" );
-				logger ("https://cdn.lucee.org/#trg[os]#");
-			} else {
-				logger( trg[ os ] & " to be uploaded on s3" );
+	loop list="windows,linux-x64,linux-aarch64" item="os" {
+		if ( !fileExists( currDir & trg[ os ] )){
+			logger( trg[ os ] & " installer missing?" );
+		} else if ( fileExists( trg.dir & trg[ os ] ) ){
+			logger( trg[ os ] & " already on s3" );
+			logger ("https://cdn.lucee.org/#trg[os]#");
+		} else {
+			logger( trg[ os ] & " to be uploaded on s3" );
+			if ( !dry_run )
 				fileCopy( currDir & trg[os], trg.dir & trg[ os ] );
 				logger ("https://cdn.lucee.org/#trg[os]#");
-				logger ("-- was uploaded" );
-			}
-			logger ("" );
+			if ( dry_run )
+				logger( "-- would have been uploaded, DRY_RUN was true" );
+			else
+				logger( "-- was uploaded" );
 		}
-		logger( "Publishing step complete!" );
+		logger ("" );
 	}
+	logger( "Publishing step complete!" );
 
 	writeoutMarkdown( log );
 </cfscript>
