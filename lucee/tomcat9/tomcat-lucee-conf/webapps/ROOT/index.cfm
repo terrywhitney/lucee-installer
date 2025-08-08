@@ -71,15 +71,24 @@
 									</h2>
 									<p>
 										<cfswitch expression="#ListFirst(server.lucee.version,'.')#">
-											<cfcase value="5">
-												Lucee 5 is the first major release of Lucee after forking from the Railo project. Lucee 5 is not about dazzling new features but about improving the core language and providing a complete architectural overhaul of the engine which brings Lucee and CFML as a language to a whole new level of awesome! <a href="#newURL#">Read More</a>
-											</cfcase>
-											<cfdefaultcase>
-												Lucee 6 introduces a number of key changes
+										<cfcase value="6">
 												<ul>
 													<li>Server Configuration now uses json rather than xml</li>
 													<li>A new single mode, rather than having both a server and web context(s)</li>
 												</ul>
+											</cfcase>
+											<cfcase value="5">
+												Lucee 5 is the first major release of Lucee after forking from the Railo project. Lucee 5 is not about dazzling new features but about improving the core language and providing a complete architectural overhaul of the engine which brings Lucee and CFML as a language to a whole new level of awesome! <a href="#newURL#">Read More</a>
+											</cfcase>
+											<cfdefaultcase>
+												Lucee 7 introduces a new era of features
+										<ul>
+										<li>Tomcat 11 -Lucee 7 is Jakarta based</li>
+										<li>AI - Lucee allows intergrations with various AI models</li>
+										<li>Performance - Lucee 7 builds upon the sucess of previous generations of Lucee - offering higher performance on the same hardware</>
+										<li>A new single mode, rather than having both a server and web context(s)</li>
+										<li>Full list of changes can be found here: <a href="https://download.lucee.org/changelog/?version=7.0">Lucee 7 Change log</a>
+										</ul>
 											</cfdefaultcase>
 										</cfswitch>
 									</p>
