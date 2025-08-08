@@ -210,7 +210,7 @@
 					</a>
 					</div>
 					<div class="col-md-5 col-sm-4">
-						<p class="copyright-text">Copyright &copy; 2015 by the Lucee Association Switzerland</p>
+						<p class="copyright-text">Copyright &copy; 2025 by the Lucee Association Switzerland</p>
 					</div>
 				</div>
 			</div>
